@@ -52,6 +52,15 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
     }
 
     for block in &loaded.blocks {
+        // Silent at the row, so it is said once here instead.
+        if let Some(problem) = block
+            .control
+            .as_deref()
+            .and_then(crate::qactions::declared_control_problem)
+        {
+            eprintln!("look sources: [{}] {problem}", block.id);
+        }
+
         // A block whose producer refers to a row (`make -C {path} deploy`) is
         // only reachable through another block's `then`. Indexing it as a
         // top-level row would offer to run it against nothing.
