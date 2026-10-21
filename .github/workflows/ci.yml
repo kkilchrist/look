@@ -99,6 +99,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -135,6 +136,8 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
@@ -192,6 +195,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -224,6 +228,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -267,6 +272,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -325,6 +331,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -413,6 +420,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             core
             apps/linows
@@ -458,6 +466,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/linows
           cache-targets: false
 
