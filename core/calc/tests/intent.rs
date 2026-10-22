@@ -15,7 +15,6 @@ fn launcher_queries_that_are_not_math() {
         "20-05-2026",
         "2026-08-04",
         "10-5-26",
-        "3-2-1",
         "2024-01-15 meeting notes",
         // Versions, addresses, encodings
         "1.2.3",
@@ -88,6 +87,11 @@ fn queries_that_are_math() {
         "24/7",
         "50/50",
         "1/2",
+        // Decimals beside `/` or `-`, and digit runs that are no whole date
+        "238000/9.3",
+        "100/2.5",
+        "10-2.5",
+        "3-2-1",
     ];
     for q in queries {
         assert!(is_math(q), "{q:?} must be math");

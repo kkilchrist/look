@@ -54,9 +54,17 @@ pub fn eval(expr: &str) -> Result<Calculation, String> {
 
 /// The inline path in one call: `None` means leave the search alone. Cheap
 /// enough to run on every keystroke without a debounce.
+///
+/// A trailing `=` declares intent the way the `/calc` panel does, so it skips
+/// [`is_math`]: `20-05-2026=` is a subtraction because the user said so.
 pub fn eval_query(query: &str) -> Option<Calculation> {
     let expr = normalize(query);
-    is_math(expr).then(|| eval(expr).ok())?
+    (is_declared(query) || is_math(expr)).then(|| eval(expr).ok())?
+}
+
+/// Ends in `=`, ignoring the `?` and spacing [`normalize`] also strips.
+fn is_declared(query: &str) -> bool {
+    query.trim_end_matches(['?', ' ', '\t']).ends_with('=')
 }
 
 /// Strips the punctuation people tack on when expecting an answer: `2+2=?`.
@@ -106,7 +114,7 @@ pub fn is_math(query: &str) -> bool {
     if q.starts_with('/') || q.starts_with('~') {
         return false;
     }
-    if is_grouped_numeric(q) {
+    if is_complete_date(q) {
         return false;
     }
     // Unknown words, stray characters, an alias glued to digits: `look 2`,
@@ -167,13 +175,30 @@ fn is_spaced(chars: &[char], i: usize) -> bool {
     before && after
 }
 
-/// Three or more all-digit groups joined by `-`, `/` or `.`.
-fn is_grouped_numeric(s: &str) -> bool {
-    let parts: Vec<&str> = s.split(['-', '/', '.']).collect();
-    parts.len() >= 3
-        && parts
+/// A whole date, `2026-08-04`, `20/05/2026` or `10-5-26`: three numbers joined
+/// by one repeated `-` or `/`, in ranges a date can take. Anything short of
+/// that is arithmetic (`238000/9.3`, `10-5-2`). Dotted versions and addresses
+/// need no check here: a number with two dots never tokenizes.
+fn is_complete_date(s: &str) -> bool {
+    ['-', '/'].into_iter().any(|sep| {
+        let parts: Vec<&str> = s.split(sep).collect();
+        let [a, b, c] = parts.as_slice() else {
+            return false;
+        };
+        if !parts
             .iter()
-            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+            .all(|p| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit()))
+        {
+            return false;
+        }
+        let num = |p: &str| p.parse::<u32>().unwrap_or(0);
+        let is_month = |p: &str| (1..=12).contains(&num(p));
+        let is_day = |p: &str| (1..=31).contains(&num(p));
+        let year_first = a.len() == 4 && is_month(b) && is_day(c);
+        let year_last =
+            matches!(c.len(), 2 | 4) && ((is_day(a) && is_month(b)) || (is_month(a) && is_day(b)));
+        year_first || year_last
+    })
 }
 
 // --- Tokens ---
@@ -745,6 +770,8 @@ mod tests {
             "20-05-2026", // the folder name from issue #325
             "2026-08-04",
             "10-5-26",
+            "2026/08/04",
+            "12/25/2026",
             "1.2.3",       // version
             "192.168.1.1", // address
             "~/Documents/2",
@@ -799,6 +826,13 @@ mod tests {
             "2pi",
             "24/7",
             "10 : 2",
+            "238000/9.3", // a decimal beside `/` or `-` is not a date
+            "100/2.5",
+            "10-2.5",
+            "1.5/2.5",
+            "10-5-2",     // no year, so not a whole date yet
+            "2026-13-01", // no month 13
+            "238000/9/3",
         ] {
             assert!(is_math(q), "{q} should be math");
         }
@@ -818,6 +852,7 @@ mod tests {
     fn eval_query_answers_or_stays_quiet() {
         assert_eq!(eval_query("1/1000").unwrap().display, "0.001");
         assert_eq!(eval_query("2+2").unwrap().raw, "4");
+        assert_eq!(eval_query("238000/9.3").unwrap().raw, "25591.3978494624");
         assert!(eval_query("20-05-2026").is_none());
         assert!(eval_query("look 2").is_none());
         assert!(eval_query("2 +").is_none());
@@ -831,5 +866,18 @@ mod tests {
             assert!(eval_query(q).is_some(), "{q} should still evaluate");
         }
         assert_eq!(eval_query("2+2=?").unwrap().display, "4");
+    }
+
+    /// A trailing `=` is the user saying "this is math", so shapes the gate
+    /// would leave alone evaluate, with aliases honoured as in the panel.
+    #[test]
+    fn trailing_equals_overrides_the_intent_gate() {
+        assert_eq!(eval_query("20-05-2026=").unwrap().raw, "-2011");
+        assert_eq!(eval_query("1920x1080 =").unwrap().raw, "2073600");
+        assert_eq!(eval_query("16:9=?").unwrap().display, "1.7777777778");
+        assert!(eval_query("20-05-2026").is_none());
+        assert!(eval_query("16:9?").is_none(), "only `=` declares intent");
+        assert!(eval_query("hello=").is_none());
+        assert!(eval_query("=").is_none());
     }
 }
