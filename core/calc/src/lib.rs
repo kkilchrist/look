@@ -57,7 +57,9 @@ pub fn eval_query(query: &str) -> Option<Calculation> {
 
 /// Ends in `=`, ignoring the `?` and spacing [`normalize`] also strips.
 fn is_declared(query: &str) -> bool {
-    query.trim_end_matches(['?', ' ', '\t']).ends_with('=')
+    query
+        .trim_end_matches(|c: char| c == '?' || c.is_whitespace())
+        .ends_with('=')
 }
 
 /// Strips the punctuation people tack on when expecting an answer: `2+2=?`.
@@ -800,6 +802,11 @@ mod tests {
     fn trailing_equals_skips_the_gate() {
         assert_eq!(eval_query("2^0.5=").unwrap().raw, "1.4142135624");
         assert_eq!(eval_query("42=").unwrap().raw, "42");
+        assert_eq!(
+            eval_query("42=\r\n").unwrap().raw,
+            "42",
+            "a pasted line ending"
+        );
         assert!(eval_query("42").is_none());
         assert!(eval_query("42?").is_none(), "only `=` declares intent");
         assert!(eval_query("hello=").is_none());
