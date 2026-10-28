@@ -128,8 +128,11 @@ pub(crate) fn look_search_files_json_impl(
         let outcome = engine.search_files(&filter, max as usize);
         // Only a bare type word can also be an app's name; anything more
         // (`photos from last week`) has said it wants files.
+        // Every app match, not the top `max`: the fuzzy hits `apps_first`
+        // drops must not take the place of an app it would keep. `a"` limits
+        // the pass to apps, so it costs one heap of those.
         let apps = if is_type_only(&filter) {
-            engine.search(&query, max as usize)
+            engine.search(&format!("a\"{query}"), usize::MAX)
         } else {
             Vec::new()
         };
@@ -171,7 +174,7 @@ fn apps_first(
             r.id.starts_with(look_indexing::CandidateIdKind::PREFIX_APP)
                 && r.title
                     .to_lowercase()
-                    .split_whitespace()
+                    .split(|c: char| !c.is_alphanumeric())
                     .any(|word| word.starts_with(&query))
         })
         .chain(recalled)
