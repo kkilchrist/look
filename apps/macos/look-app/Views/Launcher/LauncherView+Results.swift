@@ -38,8 +38,9 @@ extension LauncherView {
         case .calc(let raw):
             // Calculator row: copy the raw value, launcher out of the way.
             // History keeps the labeled working (`2+2 = 4`); the paste is the number.
+            // Nothing opens to take focus, so hand it back to the previous app.
             clipboardStore.recordLabeled(display: "\(selected.calcExpression ?? "") = \(selected.title)", payload: raw)
-            hideLauncherWindow(restorePreviousApp: false)
+            hideLauncherWindow()
             return
         case .aiAction:
             // Planner-proposed action row: the row the user just read IS the
@@ -261,6 +262,19 @@ extension LauncherView {
             await MainActor.run {
                 if outcome.opensPath {
                     openTargetAsync(row.path)
+                    return
+                }
+                // The control is the row's purpose, so Enter is its press.
+                // `.run`, not `.toggle`: a toggle is resolved against the state
+                // on screen, and Enter may land before the pane has read one.
+                // A connector decides a press for itself and answers with where
+                // it ended up, so there is nothing here to take the opposite of.
+                if outcome.pressesControl,
+                    let control = bridge.quickActions(
+                        forResultID: selected.id, kind: selected.kind.rawValue
+                    ).first
+                {
+                    runQuickAction(control, intent: .run)
                     return
                 }
                 guard let failure = outcome.errors.first else { return }
