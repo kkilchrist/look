@@ -458,14 +458,24 @@ impl QueryEngine {
             entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, title_search);
         }
 
-        ranked.sort_by(|a, b| {
-            b.1.cmp(&a.1).then_with(|| {
+        // The rerank bonus grows with query length and is not bounded by the
+        // tier, so the tier is compared first rather than trusted to the sum.
+        let mut keyed: Vec<(bool, (u32, i64))> = ranked
+            .into_iter()
+            .map(|entry| {
+                let c = &self.candidates[entry.0 as usize];
+                let named = named_app_tier(normalized_query, &c.title_search, &c.candidate) > 0;
+                (named, entry)
+            })
+            .collect();
+        keyed.sort_by(|(named_a, a), (named_b, b)| {
+            named_b.cmp(named_a).then(b.1.cmp(&a.1)).then_with(|| {
                 let title_a = &self.candidates[a.0 as usize].candidate.title;
                 let title_b = &self.candidates[b.0 as usize].candidate.title;
                 title_a.cmp(title_b)
             })
         });
-        top_limit(ranked, limit)
+        top_limit(keyed.into_iter().map(|(_, entry)| entry).collect(), limit)
     }
 
     pub fn search_scored(&self, query: &str, limit: usize) -> Vec<(Candidate, i64)> {
@@ -704,6 +714,29 @@ mod tests {
             ),
         ]);
         assert_eq!(&*engine.search_scored("excel", 10)[0].0.title, "excel");
+    }
+
+    #[test]
+    fn a_long_query_cannot_rerank_a_file_above_the_app_it_names() {
+        // The quality rerank grows with query length and skips titles the
+        // query starts, so an exact app gets nothing while a file that holds
+        // the whole query mid-title can gain more than the tier.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "file:/u/notes visual studio code insiders edition.md",
+                CandidateKind::File,
+                "notes visual studio code insiders edition.md",
+                "/u/notes visual studio code insiders edition.md",
+            ),
+            Candidate::new(
+                "app:/applications/visual studio code insiders edition.app",
+                CandidateKind::App,
+                "Visual Studio Code Insiders Edition",
+                "/Applications/Visual Studio Code Insiders Edition.app",
+            ),
+        ]);
+        let top = engine.search_scored("visual studio code insiders edition", 10);
+        assert_eq!(&*top[0].0.title, "Visual Studio Code Insiders Edition");
     }
 
     #[test]

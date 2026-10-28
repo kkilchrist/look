@@ -106,15 +106,18 @@ pub(crate) fn named_app_tier(query: &str, title_search: &str, candidate: &Candid
         CandidateKind::Action => true,
         CandidateKind::File | CandidateKind::Folder => false,
     };
-    let is_word_break = |c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.');
-    let mut words = query.split_whitespace().peekable();
-    let named = words.peek().is_some()
-        && words.all(|word| {
-            title_search
-                .split(is_word_break)
-                .any(|title_word| title_word.starts_with(word))
-        });
-    if eligible && named { TIER_NAMED_APP } else { 0 }
+    if !eligible {
+        return 0;
+    }
+    // Any non-alphanumeric is a break, on both sides: `(beta)` is the word
+    // `beta`, and `wi-fi` names `Wi-Fi` as two words.
+    let words =
+        |text| str::split(text, |c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty());
+    let mut query_words = words(query).peekable();
+    let named = query_words.peek().is_some()
+        && query_words
+            .all(|word| words(title_search).any(|title_word| title_word.starts_with(word)));
+    if named { TIER_NAMED_APP } else { 0 }
 }
 
 pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
@@ -427,6 +430,12 @@ mod tests {
         let named = |q: &str| named_app_tier(q, "visual studio code", &vscode) > 0;
         assert!(named("code"));
         assert!(named("vis cod"));
+        let beta = app(
+            "Google Chrome (Beta)",
+            "/Applications/Google Chrome Beta.app",
+        );
+        assert!(named_app_tier("beta", "google chrome (beta)", &beta) > 0);
+        assert!(named_app_tier("chrome-be", "google chrome (beta)", &beta) > 0);
         assert!(!named("ode"), "a mid-word hit is fuzzy, not a name");
         assert!(!named("code x"));
         assert!(!named(""));
