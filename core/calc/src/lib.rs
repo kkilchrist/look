@@ -810,6 +810,10 @@ mod tests {
         assert!(eval_query("42").is_none());
         assert!(eval_query("42?").is_none(), "only `=` declares intent");
         assert!(eval_query("hello=").is_none());
+        assert!(
+            eval_query("1.2.3=").is_none(),
+            "a version is not an expression"
+        );
         assert!(eval_query("=").is_none());
     }
 
