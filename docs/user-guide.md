@@ -239,6 +239,17 @@ An unrecognised name draws nothing at all rather than a placeholder, so a tile w
 
 **`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
 
+**`control` puts a switch an app supplies on the strip.** An app integrated with Look can declare a control on one of its blocks (see [Integrating your app](integrating.md)); naming it here is how you decide where it sits. It takes the place of `value` and `press` - the app answers both - so a tile with all three warns and runs neither command:
+
+```toml
+[tiles.lamp]
+title    = "Lamp"
+control  = "myapp.records#lamp"
+mnemonic = "A"
+```
+
+The name is `<block>#<control>`, exactly as the app's manifest wrote it. The tile shows the state the app reports, lights up when it is on, and presses it with a click or its key. If the app is not running, the tile says so and keeps its last reading, like any other tile that fails.
+
 **Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
 
 A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
@@ -272,7 +283,8 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 
 Path-like queries (for example `git/project/readme`) are also supported and bias path matches.
 
-URL-like queries are detected automatically (no prefix). Type a URL and Look offers an **Open in browser** row: a structural URL (with a scheme, port, path, or `localhost`/IP - e.g. `http://localhost:3000` or `example.com/docs`) ranks at the top, while a bare `host.tld` (e.g. `github.com`) ranks after your local results so it never displaces a real match. URLs you open this way come back as **Recently opened** rows, ranked by frecency and filtered as you type.
+URL-like queries are detected automatically (no prefix). Type a URL and Look offers an **Open in browser** row: a structural URL (with a scheme, port, path, `localhost`, or a full IP address - e.g. `http://localhost:3000`, `192.168.1.1` or `example.com/docs`) ranks at the top, while a bare `host.tld` (e.g. `github.com`) ranks after your local results so it never displaces a real match.
+A decimal like `3.14` is never a URL, and a shorthand address like `127.1` needs a port or scheme to count as one (`127.1:8080`). URLs you open this way come back as **Recently opened** rows, ranked by frecency and filtered as you type.
 
 Arithmetic is detected automatically too (no prefix). Type an expression like `2+2` or `sqrt(16)` and Look pins a **Calculator** row above every other result with the answer. `Enter` or a click copies the value and hides the launcher; clipboard history (`c"`) shows the worked expression (`2+2 = 4`) but still pastes just the value. Shape decides whether something counts as math, not spacing, so a date (`20-05-2026`), a resolution (`1920x1080`), or a ratio (`16:9`) is left alone. Aliases `x`, `:`, and a leading `v` (multiply, divide, square root) only count as operators when they stand alone (`3 x 4`, `10 : 2`, `v 16`) - inside the dedicated `/calc` panel below they're honored wherever they land, so `1920x1080` there evaluates as a product.
 
@@ -287,8 +299,11 @@ Clipboard mode (`c"`):
 
 Translation mode (`t"`/`tw"`):
 
-- supports EN/VI/JA result sections,
-- translation uses network requests.
+- shows one result section per target language, default VI/EN/JA and configurable via `translate_languages` (see File-only settings below), up to three,
+- translation uses network requests,
+- Google Translate answers first. When it throttles your address, MyMemory steps in: free, but capped at about 5,000 characters per day per IP address, shared across every configured language. A 500-character paste with three targets spends 1,500 of that budget, and once it is spent the sections report a rate-limit message until both services accept requests again. Repeating a query in the same session costs nothing, the result is kept.
+- a text longer than about 1,600 characters is more than the MyMemory fallback will take, because one query of that size would spend most of the day's budget. Google still translates it; if Google is throttling you, the sections ask for a shorter selection instead.
+- the **Open in Browser** link opens the web translator for the first language in `translate_languages` (Vietnamese with the default `vi,en,ja`).
 
 ## Command mode
 
@@ -612,6 +627,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
+- `translate_languages` (comma-separated language codes for the `t"` translation panel, shown in this order; default `vi,en,ja`. At most three: each one is a separate request and they share the MyMemory daily budget, so anything past the third is dropped. The built-in set is `ar`, `bn`, `de`, `en`, `es`, `fa`, `fr`, `hi`, `id`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `pt-br`, `ru`, `sv`, `th`, `tr`, `uk`, `vi`, `zh`, `zh-cn`, `zh-tw`. A code outside it is a typo or an unsupported language, so it is dropped from both the labels and the result sections; an empty or all-invalid list falls back to the default)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 - `hints_enabled` (macOS, and the gpui build on Linux and Windows; the hint line along the bottom of the launcher, with its Todo tally, and the author link. Default `true`; `false` hides all of them on every screen)
 - `search_placeholder` (macOS, and the gpui build on Linux and Windows; the text in the empty search field, shown exactly as written. The config file ships with `search_placeholder=Type whatever you want`; leave the value empty to show no placeholder. As with every value, a ` #` starts a comment)

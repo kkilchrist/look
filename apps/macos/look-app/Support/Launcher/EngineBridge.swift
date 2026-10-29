@@ -38,6 +38,10 @@ private func look_request_index_refresh() -> Bool
 nonisolated
 private func look_translate_json(_ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_translate_languages_json")
+nonisolated
+private func look_translate_languages_json(_ raw: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_fuzzy_score")
 nonisolated
 private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePointer<CChar>?) -> Int64
@@ -153,6 +157,18 @@ private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedE
 @_silgen_name("look_ai_markdown_segments_json")
 nonisolated
 private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_plan_verb_json")
+nonisolated
+private func look_plan_verb_json(_ blockID: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_control_json")
+nonisolated
+private func look_control_json(_ actionID: UnsafePointer<CChar>?, _ press: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_run_verb_json")
+nonisolated
+private func look_run_verb_json(_ candidateID: UnsafePointer<CChar>?, _ plan: UInt64) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_markdown_blocks_json")
 nonisolated
@@ -749,6 +765,27 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(TranslationResult.self, from: data)
     }
 
+    /// The validated target languages parsed from a raw `translate_languages`
+    /// value, in the configured order; the table and fallback live in
+    /// `look_answers`. Empty only if the bridge call itself fails.
+    nonisolated func translateLanguages(rawConfig: String) -> [TranslateLanguage] {
+        let result = rawConfig.withCString { look_translate_languages_json($0) }
+
+        guard let result else {
+            return []
+        }
+
+        defer {
+            look_free_cstring(result)
+        }
+
+        guard let data = String(cString: result).data(using: .utf8) else {
+            return []
+        }
+
+        return (try? JSONDecoder().decode([TranslateLanguage].self, from: data)) ?? []
+    }
+
     /// Shared `core/matching` fuzzy score for `query` vs `title` (identical
     /// ranking to linows), or nil on no match. Both sides must be pre-lowercased
     /// by the caller (the scorer is case-sensitive). Cheap - safe while typing.
@@ -1017,6 +1054,50 @@ final class EngineBridge: @unchecked Sendable {
         return segments
     }
 
+    /// Asks the connector that owns the row what the verb would do. Spawns no
+    /// process but waits on one, so call it off the main thread.
+    nonisolated func planVerb(
+        blockID: String, candidateID: String, row: RowRef, query: String, ancestorsJSON: String
+    ) -> VerbPlan? {
+        let ptr = blockID.withCString { block in
+            candidateID.withCString { candidate in
+                row.id.withCString { id in
+                    row.title.withCString { title in
+                        row.path.withCString { path in
+                            query.withCString { query in
+                                ancestorsJSON.withCString { ancestors in
+                                    look_plan_verb_json(
+                                        block, candidate, id, title, path, query, ancestors)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(VerbPlan.self, from: data)
+    }
+
+    /// Reads a declared control, or presses it and reads where it ended up.
+    /// Waits on a connector, so call it off the main thread.
+    nonisolated func control(actionID: String, press: Bool) -> ControlState? {
+        guard let ptr = actionID.withCString({ look_control_json($0, press) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(ControlState.self, from: data)
+    }
+
+    /// Runs a plan the user confirmed.
+    nonisolated func runVerb(candidateID: String, plan: UInt64) -> VerbRun? {
+        guard let ptr = candidateID.withCString({ look_run_verb_json($0, plan) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(VerbRun.self, from: data)
+    }
+
     /// Markdown as blocks, frontmatter already dropped. Rust core
     /// (core/markdown), so the shells agree on what a heading is.
     nonisolated func markdownBlocks(_ text: String) -> [MarkdownBlock] {
@@ -1255,7 +1336,7 @@ final class EngineBridge: @unchecked Sendable {
         guard let ptr else {
             return PerformBlockOutcome(
                 performed: 0, errors: ["the core did not answer"], producesRows: false,
-                opensPath: false)
+                pressesControl: false, opensPath: false)
         }
         defer { look_free_cstring(ptr) }
         // The core sends snake_case, so `produces_rows` only reaches
@@ -1267,7 +1348,7 @@ final class EngineBridge: @unchecked Sendable {
         else {
             return PerformBlockOutcome(
                 performed: 0, errors: ["the core's answer could not be read"],
-                producesRows: false, opensPath: false)
+                producesRows: false, pressesControl: false, opensPath: false)
         }
         return outcome
     }
@@ -1529,6 +1610,13 @@ nonisolated struct TranslationResult: Decodable {
     let error: BridgeError?
 }
 
+/// Wire shape of `look_answers::TranslateLanguage`: a validated target
+/// language's lowercase code and display label.
+nonisolated struct TranslateLanguage: Decodable {
+    let code: String
+    let label: String
+}
+
 /// Wire shape of `look_answers::UrlMatch`: the resolved openable URL and how
 /// certain the classification is. `tier` decodes the lowercased Rust enum
 /// (`structural` / `barehost`).
@@ -1626,8 +1714,32 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
     let name: String
     let icon: String?
     let performs: Bool
+    /// A connector works out what this verb would do, so the question comes
+    /// from it rather than from a declared string.
+    let plans: Bool
     /// Already expanded against the row, so it names what will actually happen.
     let confirm: String?
+}
+
+/// What a verb would do, for the question the user confirms.
+nonisolated struct VerbPlan: Decodable {
+    let plan: UInt64
+    let title: String
+    let detail: String?
+    let error: String?
+}
+
+/// Where a declared control stands, or why it could not be read.
+nonisolated struct ControlState: Decodable {
+    let on: Bool
+    let error: String?
+}
+
+/// How running a confirmed plan went.
+nonisolated struct VerbRun: Decodable {
+    let ok: Bool
+    let summary: String?
+    let error: String?
 }
 
 /// A declared block as the row layer needs it: what to call it and what icon it
@@ -1758,6 +1870,8 @@ nonisolated struct PerformBlockOutcome: Decodable {
     /// The target lists rows to pick from rather than steps to run. An explicit
     /// flag, because "nothing performed" is also what a failure looks like.
     let producesRows: Bool
+    /// The block supplies a control and nothing else, so Enter presses it.
+    let pressesControl: Bool
     /// Nothing declared and the row has a path, so it opens like any file. The
     /// core decides this, not the row's kind.
     let opensPath: Bool

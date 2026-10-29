@@ -111,7 +111,11 @@ struct LauncherView: View {
     @State var isActionMenuOpen = false
     @State var actionMenuIndex = 0
     /// A destructive `then` target waiting for a yes/no answer in the menu.
-    @State var pendingActionConfirm: (blockID: String, title: String, question: String)?
+    /// `plan` is set when a connector worked the question out, and is what
+    /// confirming then runs. Nil means a declared `confirm` string, which the
+    /// block performs in the ordinary way.
+    @State var pendingActionConfirm:
+        (blockID: String, title: String, question: String, plan: UInt64?)?
     @State var quickActionStates: [String: ActionState] = [:]
     // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
     // of the SAME result keep showing what it already resolved, instead of blanking
@@ -192,6 +196,9 @@ struct LauncherView: View {
     /// filesystem.
     @State var lastHiddenAt: Date?
     @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
+    /// Read at launch and on config reload, like the retention policy above, so
+    /// no keystroke on the translation path touches the filesystem.
+    @State var translateLanguages: [TranslateLanguage] = []
     @StateObject var runningAppsService = RunningAppsService()
     @StateObject var processModel = ProcessFinderModel()
 
@@ -927,6 +934,7 @@ struct LauncherView: View {
             focusActiveInput()
             refreshClipboardMonitoringMode()
             reloadQueryRetentionPolicy()
+            reloadTranslateLanguages()
             runningAppsService.refresh()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
             // A cold `lookapp <mode>`: this process launched to serve it.

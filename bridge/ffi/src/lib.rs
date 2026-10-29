@@ -321,6 +321,17 @@ pub extern "C" fn look_translate_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Parses a raw `translate_languages` config value and returns an owned JSON C
+/// string: an array of `{code, label}` in the configured order. Free the result
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_translate_languages_json(raw: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        translate_api::look_translate_languages_json_impl(raw)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Resolves a shared instant answer (currency/weather/crypto) for `query`,
 /// returning an owned JSON C string - an `Answer` object on a hit, or the JSON
 /// literal `null` otherwise. Free the result with `look_free_cstring`.
@@ -833,6 +844,51 @@ pub extern "C" fn look_ai_future_leaning(
 pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         markdown_api::look_ai_markdown_segments_json_impl(text)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Reads or presses a control a declaration supplied. JSON `{on, error}`.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_control_json(action_id: *const c_char, press: bool) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_control_json_impl(action_id, press)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// What a connector's verb would do against the selected row. JSON
+/// `{plan, title, detail, error}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_plan_verb_json(
+    block_id: *const c_char,
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_plan_verb_json_impl(
+            block_id,
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            query,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Runs a plan the user confirmed. JSON `{ok, summary, error}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_run_verb_json(candidate_id: *const c_char, plan: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_run_verb_json_impl(candidate_id, plan)
     }))
     .unwrap_or(std::ptr::null_mut())
 }
